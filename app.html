@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="sl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ustvari varnostno kopijo fotografij iz eAsistenta</title>
+  <link rel="stylesheet" href="app.css">
+</head>
+<body>
+  <main class="app">
+    <header>
+      <p class="eyebrow">VARNOSTNO KOPIRAJ FOTOGRAFIJE</p>
+      <h1>Fotografije iz vrtca v eAsistentu</h1>
+      <p class="intro">Fotografije iz galerije shrani v polni ločljivosti v izbrano lokalno mapo. Do prijavnih podatkov in uporabniškega računa nimamo dostopa.</p>
+    </header>
+
+    <section class="settings" aria-label="Nastavitve varnostne kopije">
+      <div class="field">
+        <label>Osnovna mapa</label>
+        <div class="folder-row">
+          <button id="choose-root" type="button" class="secondary">Izberi lokalno mapo …</button>
+          <span id="root-name" class="muted">Mapa ni izbrana</span>
+        </div>
+        <small>Fotografije bodo shranjene v podmape z datumom.</small>
+      </div>
+
+      <div class="date-grid">
+        <div class="field">
+          <label for="date-from">Od (vključno)</label>
+          <input id="date-from" type="date">
+        </div>
+        <div class="field">
+          <label for="date-to">Do (vključno)</label>
+          <input id="date-to" type="date">
+        </div>
+      </div>
+
+      <div class="field delay-field">
+        <div class="delay-heading">
+          <label for="request-delay">Premor med prenosi</label>
+          <output id="request-delay-value" for="request-delay">250 ms</output>
+        </div>
+        <input id="request-delay" type="range" min="100" max="1500" step="50" value="250">
+        <small>Daljši premor zmanjša pogostost zahtev do portala.</small>
+      </div>
+
+      <div class="actions">
+        <button id="scan" type="button" class="secondary">Preglej galerijo</button>
+        <button id="download" type="button" disabled>Prenesi manjkajoče fotografije</button>
+        <button id="stop" type="button" class="stop" hidden>Ustavi</button>
+      </div>
+    </section>
+
+    <section class="progress" aria-live="polite">
+      <div id="summary" class="summary">Za začetek izberi osnovno mapo.</div>
+      <progress id="progress-bar" max="1" value="0" hidden></progress>
+      <div id="details" class="details"></div>
+    </section>
+
+    <footer>
+      <span>Zahteve se pošiljajo samo na <strong>vrtec.easistent.com</strong>. Fotografije se shranijo neposredno v izbrano mapo.</span>
+    </footer>
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>
