@@ -72,6 +72,9 @@ let downloadableCount = 0;
 let isRunning = false;
 let shouldStop = false;
 let activeRequest = null;
+let delayTimer = null;
+let delayStartedAt = 0;
+let delayResolve = null;
 
 const PHOTO_FORMS = TEXT.photoForms;
 const FILE_FORMS = TEXT.fileForms;
@@ -85,6 +88,25 @@ updateRequestDelayLabel();
 
 function updateRequestDelayLabel() {
   requestDelayValue.textContent = TEXT.delayValue(requestDelayInput.value);
+  if (delayResolve) scheduleRequestDelay();
+}
+
+function scheduleRequestDelay() {
+  clearTimeout(delayTimer);
+  const remaining = Number(requestDelayInput.value) - (Date.now() - delayStartedAt);
+  delayTimer = setTimeout(() => {
+    const resolve = delayResolve;
+    delayResolve = null;
+    if (resolve) resolve();
+  }, Math.max(0, remaining));
+}
+
+function waitForRequestDelay() {
+  delayStartedAt = Date.now();
+  return new Promise(resolve => {
+    delayResolve = resolve;
+    scheduleRequestDelay();
+  });
 }
 
 async function chooseRoot() {
@@ -322,14 +344,15 @@ async function downloadMissing() {
           failures.push(TEXT.folderAccessDenied);
         }
         if (/session|HTTP (401|403|429|5\d\d)/i.test(error?.message || "")) shouldStop = true;
+        details.textContent = `${TEXT.downloadDetails(formatCount(saved, FILE_FORMS), formatCount(skipped, FILE_FORMS), failed.toLocaleString("sl-SI"))}\n${failures.join("\n")}`;
       }
 
       progressBar.value = index + 1;
-      if ((index + 1) % 10 === 0 || index + 1 === missing.length || shouldStop) {
-        setSummary(TEXT.downloadProgress((index + 1).toLocaleString("sl-SI"), missing.length.toLocaleString("sl-SI")));
+      setSummary(TEXT.downloadProgress((index + 1).toLocaleString("sl-SI"), missing.length.toLocaleString("sl-SI")));
+      if (!failures.length) {
         details.textContent = TEXT.downloadDetails(formatCount(saved, FILE_FORMS), formatCount(skipped, FILE_FORMS), failed.toLocaleString("sl-SI"));
       }
-      if (!shouldStop && index + 1 < missing.length) await delay(Number(requestDelayInput.value));
+      if (!shouldStop && index + 1 < missing.length) await waitForRequestDelay();
     }
   } catch (error) {
     failed++;
@@ -344,8 +367,7 @@ async function downloadMissing() {
   downloadableCount = failed > 0 || stopped ? 1 : 0;
   const prefix = stopped ? TEXT.stopped : TEXT.finished;
   setSummary(TEXT.downloadSummary(prefix, formatCount(saved, FILE_FORMS), formatCount(skipped, FILE_FORMS), failed.toLocaleString("sl-SI")));
-  details.textContent = failures.slice(0, 8).join("\n") || TEXT.allSaved;
-  if (failures.length > 8) details.textContent += TEXT.moreFailures(failures.length - 8);
+  details.textContent = failures.join("\n") || TEXT.allSaved;
   downloadButton.disabled = downloadableCount === 0;
 }
 
