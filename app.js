@@ -33,6 +33,7 @@ const TEXT = {
   moreFailures: count => `\n… in še ${count} napak.`,
   stoppedRequest: "Zahteva je bila ustavljena.",
   httpError: status => `Zahteva za fotografijo je vrnila HTTP ${status}.`,
+  requestBlocked: "Preveri prijavo na strani; prenos je ustavljen.",
   emptyFile: "Portal je vrnil prazno datoteko.",
   notImage: "Portal ni vrnil slikovnih podatkov. Preveri, ali si prijavljen.",
   unknownImageType: "Oblike izvirne fotografije ni bilo mogoče prepoznati, zato datoteka ni bila shranjena.",
@@ -67,6 +68,7 @@ const sourceTabId = sourceTabValue === null || sourceTabValue === "" ? NaN : Num
 
 let rootHandle = null;
 let scannedPhotos = [];
+let scannedExistingByDate = new Map();
 let scannedSignature = "";
 let downloadableCount = 0;
 let isRunning = false;
@@ -144,8 +146,8 @@ async function scanGallery() {
     scannedPhotos = allPhotos.filter(photo => (!from || photo.date >= from) && (!to || photo.date <= to));
     scannedSignature = makeSignature(from, to, rootHandle.name);
 
-    const existingByDate = await buildExistingIndex(rootHandle, scannedPhotos);
-    const present = scannedPhotos.reduce((count, photo) => count + (existingByDate.get(photo.date)?.has(photo.id) ? 1 : 0), 0);
+    scannedExistingByDate = await buildExistingIndex(rootHandle, scannedPhotos);
+    const present = scannedPhotos.reduce((count, photo) => count + (scannedExistingByDate.get(photo.date)?.has(photo.id) ? 1 : 0), 0);
     const missing = scannedPhotos.length - present;
     downloadableCount = missing;
 
@@ -154,6 +156,7 @@ async function scanGallery() {
     downloadButton.disabled = missing === 0;
   } catch (error) {
     scannedPhotos = [];
+    scannedExistingByDate = new Map();
     scannedSignature = "";
     downloadableCount = 0;
     downloadButton.disabled = true;
@@ -274,13 +277,7 @@ async function downloadMissing() {
   }
 
   shouldStop = false;
-  let existingByDate;
-  try {
-    existingByDate = await buildExistingIndex(rootHandle, scannedPhotos);
-  } catch (error) {
-    setSummary(TEXT.folderReadFailed(shortError(error)));
-    return;
-  }
+  const existingByDate = scannedExistingByDate;
   const missing = scannedPhotos.filter(photo => !existingByDate.get(photo.date)?.has(photo.id));
   if (!missing.length) {
     downloadableCount = 0;
@@ -301,6 +298,9 @@ async function downloadMissing() {
   const directories = new Map();
   progressBar.max = Math.max(1, missing.length);
   progressBar.value = 0;
+
+  // Let the browser paint the preparing state before starting file operations.
+  await new Promise(resolve => requestAnimationFrame(resolve));
 
   try {
     for (let index = 0; index < missing.length; index++) {
@@ -343,7 +343,7 @@ async function downloadMissing() {
           shouldStop = true;
           failures.push(TEXT.folderAccessDenied);
         }
-        if (/session|HTTP (401|403|429|5\d\d)/i.test(error?.message || "")) shouldStop = true;
+        if (error?.message === TEXT.requestBlocked || /session|HTTP (401|403|429|5\d\d)/i.test(error?.message || "")) shouldStop = true;
         details.textContent = `${TEXT.downloadDetails(formatCount(saved, FILE_FORMS), formatCount(skipped, FILE_FORMS), failed.toLocaleString("sl-SI"))}\n${failures.join("\n")}`;
       }
 
@@ -376,13 +376,19 @@ async function fetchOriginal(url) {
   let response;
   for (let attempt = 0; attempt < 4; attempt++) {
     activeRequest = new AbortController();
-    response = await fetch(url, {
-      method: "GET",
-      credentials: "include",
-      cache: "no-store",
-      signal: activeRequest.signal,
-      headers: { Accept: "image/avif,image/webp,image/apng,image/*,*/*;q=0.8" },
-    });
+    try {
+      response = await fetch(url, {
+        method: "GET",
+        credentials: "include",
+        cache: "no-store",
+        redirect: "error",
+        signal: activeRequest.signal,
+        headers: { Accept: "image/avif,image/webp,image/apng,image/*,*/*;q=0.8" },
+      });
+    } catch (error) {
+      if (error?.name === "AbortError") throw error;
+      throw new Error(TEXT.requestBlocked);
+    }
     if (response.status !== 429 && response.status < 500) break;
     if (attempt < 3) await delay(750 * (2 ** attempt));
     if (shouldStop) throw new DOMException(TEXT.stoppedRequest, "AbortError");
@@ -474,6 +480,7 @@ function setBusy(busy, label) {
 
 function invalidateScan(message) {
   scannedPhotos = [];
+  scannedExistingByDate = new Map();
   scannedSignature = "";
   downloadableCount = 0;
   downloadButton.disabled = true;
